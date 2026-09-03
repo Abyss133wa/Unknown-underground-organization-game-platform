@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>不知名地下组织 游戏邀约平台</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>🎮 不知名地下组织 游戏邀约平台</h1>
+    <div class="topbar-actions">
+      <span id="admin-badge" class="admin-badge" hidden>👑 管理员</span>
+      <button class="btn" id="btn-my">我的报名</button>
+      <button class="btn" id="btn-created">我的招募</button>
+      <button class="btn btn-primary" id="btn-create">＋ 发起招募</button>
+      <button class="btn btn-admin" id="btn-admin">管理员登录</button>
+    </div>
+  </header>
+
+  <nav class="filters" id="filters">
+    <button class="filter active" data-status="all">全部</button>
+    <button class="filter" data-status="open">招募中</button>
+    <button class="filter" data-status="full">已满员</button>
+    <button class="filter" data-status="ended">已结束</button>
+  </nav>
+
+  <main id="game-list" class="game-list"></main>
+  <div id="empty" class="empty" hidden>暂无相关招募，点右上角「发起招募」开一局吧～</div>
+
+  <!-- 发起 / 编辑 表单 -->
+  <div class="modal" id="create-modal" hidden>
+    <div class="modal-card">
+      <h2 id="create-title">发起招募</h2>
+      <form id="create-form">
+        <label>游戏名称 *</label>
+        <input name="title" required maxlength="100">
+
+        <label>游戏类型</label>
+        <input name="game_type" maxlength="50" placeholder="如：MOBA / FPS / 桌游">
+
+        <div class="form-row">
+          <div>
+            <label>开始时间 *</label>
+            <input name="start_time" type="datetime-local" required>
+          </div>
+          <div>
+            <label>结束时间 *</label>
+            <input name="end_time" type="datetime-local" required>
+          </div>
+        </div>
+
+        <label>人数上限 *</label>
+        <input name="max_players" type="number" min="1" max="1000" required>
+
+        <label>开黑渠道 / 房间号</label>
+        <input name="channel" maxlength="100" placeholder="如：YY 频道 1234 / 游戏内房间号">
+
+        <label>发起人昵称 *</label>
+        <input name="creator_nickname" required maxlength="50">
+
+        <label>备注</label>
+        <textarea name="description" maxlength="1000" rows="2"></textarea>
+
+        <div id="edit-token-wrap" hidden>
+          <label>管理口令 *（编辑时需要）</label>
+          <input name="admin_token" id="edit-admin-token" maxlength="100">
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn" data-close>取消</button>
+          <button type="submit" class="btn btn-primary">提交</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 报名 / 取消报名 弹窗 -->
+  <div class="modal" id="join-modal" hidden>
+    <div class="modal-card">
+      <h2 id="join-title">报名参与</h2>
+      <p id="join-game-title" class="muted"></p>
+      <form id="join-form">
+        <label>你的昵称 *</label>
+        <input name="nickname" required maxlength="50">
+        <label id="join-remark-label">备注（可选）</label>
+        <input name="remark" maxlength="200">
+        <div class="modal-actions">
+          <button type="button" class="btn" data-close>取消</button>
+          <button type="submit" class="btn btn-primary">确认</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 详情 -->
+  <div class="modal" id="detail-modal" hidden>
+    <div class="modal-card">
+      <div class="detail-head">
+        <h2 id="detail-title"></h2>
+        <span id="detail-status" class="badge"></span>
+      </div>
+      <div id="detail-body" class="detail-body"></div>
+
+      <div class="detail-section">
+        <h3>已报名（<span id="detail-count">0</span>/<span id="detail-max">0</span>）</h3>
+        <ul id="detail-signups" class="signup-list"></ul>
+      </div>
+
+      <div class="detail-actions">
+        <button class="btn btn-primary" id="detail-join">报名</button>
+        <button class="btn" id="detail-leave">取消报名</button>
+      </div>
+
+      <div class="admin-zone">
+        <input id="admin-token" placeholder="管理口令（发起人，编辑/删除用）" maxlength="100">
+        <button class="btn" id="detail-edit">编辑</button>
+        <button class="btn btn-danger" id="detail-delete">删除</button>
+      </div>
+
+      <button class="btn btn-block" data-close>关闭</button>
+    </div>
+  </div>
+
+  <!-- 创建成功，展示口令 -->
+  <div class="modal" id="token-modal" hidden>
+    <div class="modal-card">
+      <h2>招募已创建 🎉</h2>
+      <p>请妥善保存管理口令（仅显示这一次，用于编辑 / 删除该招募）：</p>
+      <div class="token-box" id="token-text"></div>
+      <button class="btn btn-primary btn-block" id="token-copy">复制口令</button>
+      <button class="btn btn-block" data-close>我已保存</button>
+    </div>
+  </div>
+
+  <!-- 我的报名 -->
+  <div class="modal" id="my-modal" hidden>
+    <div class="modal-card">
+      <h2>我的报名</h2>
+      <form id="my-form">
+        <label>你的昵称 *</label>
+        <input name="nickname" required maxlength="50">
+        <div class="modal-actions">
+          <button type="button" class="btn" data-close>取消</button>
+          <button type="submit" class="btn btn-primary">查询</button>
+        </div>
+      </form>
+      <div id="my-result" class="my-result" hidden></div>
+    </div>
+  </div>
+
+  <!-- 我的招募 -->
+  <div class="modal" id="created-modal" hidden>
+    <div class="modal-card">
+      <h2>我的招募</h2>
+      <form id="created-form">
+        <label>你的昵称 *（发起人）</label>
+        <input name="nickname" required maxlength="50">
+        <div class="modal-actions">
+          <button type="button" class="btn" data-close>取消</button>
+          <button type="submit" class="btn btn-primary">查询</button>
+        </div>
+      </form>
+      <div id="created-result" class="my-result" hidden></div>
+    </div>
+  </div>
+
+  <!-- 管理员登录 -->
+  <div class="modal" id="admin-modal" hidden>
+    <div class="modal-card">
+      <h2>管理员登录</h2>
+      <form id="admin-form">
+        <label>账号</label>
+        <input name="username" required maxlength="50" autocomplete="username">
+        <label>密码</label>
+        <input name="password" type="password" required maxlength="100" autocomplete="current-password">
+        <div class="modal-actions">
+          <button type="button" class="btn" data-close>取消</button>
+          <button type="submit" class="btn btn-primary">登录</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
