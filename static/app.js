@@ -1,6 +1,6 @@
 // 游戏邀约平台 · 前端交互逻辑
 let games = [];           // 当前招募列表缓存
-let currentStatus = 'active'; // 当前筛选：默认进行中（过期局归档到「已结束」）
+let currentStatus = 'ongoing'; // 当前筛选：默认进行中（过期局归档到「已结束」）
 let currentGame = null;    // 详情中正在查看的招募
 let joinMode = 'join';     // 'join' | 'leave'
 let editingId = null;      // 编辑中的招募 id
@@ -35,32 +35,57 @@ function saveNick(n) { if (n) localStorage.setItem(NICK_KEY, n); }
 function fillNick(input) { if (input && !input.value) input.value = getNick(); }
 
 function gameShareUrl(id) {
-  return `${location.origin}${location.pathname.replace(/\/$/, '') || '/'}#game-${id}`;
+  const url = new URL(location.pathname, location.origin);
+  url.searchParams.set('game', String(id));
+  return url.toString();
 }
 
 async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch (e) {
-    return false;
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) { /* 走下面的兼容复制 */ }
   }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    if (ok) return true;
+  } catch (e) { /* ignore */ }
+  return false;
 }
 
-function parseGameHash() {
+function parseSharedGameId() {
+  const q = new URLSearchParams(location.search).get('game');
+  if (q && /^\d+$/.test(q)) return Number(q);
   const m = location.hash.match(/^#game-(\d+)$/);
   return m ? Number(m[1]) : null;
 }
 
 function setGameHash(id) {
-  const next = `#game-${id}`;
-  if (location.hash !== next) history.replaceState(null, '', next);
+  const url = new URL(location.href);
+  url.searchParams.set('game', String(id));
+  url.hash = '';
+  const next = `${url.pathname}${url.search}`;
+  if (`${location.pathname}${location.search}` !== next) {
+    history.replaceState(null, '', next);
+  }
 }
 
 function clearGameHash() {
-  if (location.hash.startsWith('#game-')) {
-    history.replaceState(null, '', location.pathname + location.search);
-  }
+  const url = new URL(location.href);
+  if (!url.searchParams.has('game') && !url.hash.startsWith('#game-')) return;
+  url.searchParams.delete('game');
+  url.hash = '';
+  history.replaceState(null, '', `${url.pathname}${url.search}`);
 }
 
 function closeDetail() {
@@ -112,7 +137,7 @@ function matchesFilter(g) {
   switch (currentStatus) {
     case 'all':
       return true;
-    case 'active':
+    case 'ongoing':
       return g.status === 'open' || g.status === 'full';
     case 'upcoming':
       return g.status !== 'ended' && new Date(g.start_time).getTime() > now;
@@ -230,8 +255,7 @@ $('token-copy').addEventListener('click', async () => {
 
 $('token-share').addEventListener('click', async () => {
   if (!lastCreatedId) return;
-  if (await copyText(gameShareUrl(lastCreatedId))) toast('招募链接已复制，发给群友即可');
-  else toast('复制失败，请手动复制地址栏链接');
+  await copyShareLink(lastCreatedId);
 });
 
 // ===== 详情 =====
@@ -361,10 +385,18 @@ $('detail-end').addEventListener('click', async () => {
   } catch (err) { toast(err.message); }
 });
 
+async function copyShareLink(id) {
+  const url = gameShareUrl(id);
+  if (await copyText(url)) {
+    toast('招募链接已复制');
+    return;
+  }
+  window.prompt('复制失败，请手动复制：', url);
+}
+
 $('detail-share').addEventListener('click', async () => {
   if (!currentGame) return;
-  if (await copyText(gameShareUrl(currentGame.id))) toast('招募链接已复制');
-  else toast('复制失败，请手动复制地址栏');
+  await copyShareLink(currentGame.id);
 });
 
 // ===== 我的报名 =====
@@ -474,11 +506,11 @@ function renderCreatedGames(list) {
 
 // ===== 筛选 =====
 $('filters').addEventListener('click', (e) => {
-  const btn = e.target.closest('.filter');
+  const btn = e.target.closest('#filters [data-filter]');
   if (!btn) return;
-  document.querySelectorAll('.filter').forEach((b) => b.classList.remove('active'));
-  btn.classList.add('active');
-  currentStatus = btn.dataset.status;
+  $('filters').querySelectorAll('.filter').forEach((b) => b.classList.remove('is-on'));
+  btn.classList.add('is-on');
+  currentStatus = btn.getAttribute('data-filter');
   render();
 });
 
@@ -519,7 +551,7 @@ $('admin-form').addEventListener('submit', async (e) => {
 });
 
 async function openFromHash() {
-  const id = parseGameHash();
+  const id = parseSharedGameId();
   if (!id) return;
   try {
     const g = await api(`/api/games/${id}`);
@@ -531,7 +563,7 @@ async function openFromHash() {
 }
 
 window.addEventListener('hashchange', () => {
-  if (parseGameHash()) openFromHash();
+  if (parseSharedGameId()) openFromHash();
   else closeModal('detail-modal');
 });
 
