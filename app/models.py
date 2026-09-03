@@ -30,7 +30,7 @@ class Game(Base):
     title = Column(String(100), nullable=False)          # 游戏名称
     game_type = Column(String(50), nullable=True)        # 游戏类型
     description = Column(Text, nullable=True)            # 备注说明
-    start_time = Column(DateTime, nullable=False)        # 开始时间
+    start_time = Column(DateTime, nullable=False, index=True)  # 开始时间
     end_time = Column(DateTime, nullable=False)          # 结束时间
     max_players = Column(Integer, nullable=False)        # 人数上限
     channel = Column(String(100), nullable=True)         # 开黑渠道/房间号

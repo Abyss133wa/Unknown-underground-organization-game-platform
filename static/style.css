@@ -165,6 +165,8 @@ body {
   background: #fffbeb;
 }
 .btn-admin:hover { background: #fef3c7; }
+.btn[hidden],
+.admin-zone input[hidden] { display: none !important; }
 
 /* ===== 模态 ===== */
 .modal {
@@ -209,7 +211,8 @@ form input:focus, form textarea:focus { outline: 2px solid var(--primary); borde
 /* ===== 详情 ===== */
 .detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .detail-head h2 { margin: 0; }
-.detail-body { color: var(--muted); font-size: 14px; margin: 12px 0; }
+.detail-layout { margin: 12px 0; }
+.detail-body { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
 .detail-body .row { padding: 4px 0; }
 .detail-section { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 6px; }
 .detail-section h3 { font-size: 15px; margin: 4px 0 8px; }
@@ -225,15 +228,34 @@ form input:focus, form textarea:focus { outline: 2px solid var(--primary); borde
   font-size: 14px;
 }
 .signup-list li .r { color: var(--muted); font-size: 12px; }
-.detail-actions { display: flex; gap: 10px; margin: 14px 0; }
+.detail-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
 .admin-zone {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 6px;
   padding-top: 12px;
   border-top: 1px dashed var(--border);
 }
-.admin-zone input { flex: 1; }
+.admin-zone input { flex: 1; min-width: 160px; }
+
+@media (min-width: 1024px) {
+  #detail-modal .modal-card { max-width: 840px; }
+  .detail-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .detail-layout .detail-body { margin: 0; }
+  .detail-layout .detail-section {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 0;
+    border-left: 1px solid var(--border);
+    padding-left: 20px;
+  }
+}
 
 /* ===== 口令展示 ===== */
 .token-box {

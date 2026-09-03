@@ -1,4 +1,5 @@
-"""招募相关的接口：创建 / 列表 / 详情 / 编辑 / 删除。"""
+"""招募相关的接口：创建 / 列表 / 详情 / 编辑 / 结束 / 删除。"""
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -12,10 +13,17 @@ from ..serializers import refresh_expired, to_out
 router = APIRouter(prefix="/api/games", tags=["games"])
 
 
+def _require_admin(g: models.Game, admin_token: Optional[str], x_admin_token: Optional[str]) -> None:
+    if x_admin_token == ADMIN_TOKEN:
+        return
+    if not admin_token or hash_token(admin_token) != g.admin_token_hash:
+        raise HTTPException(status_code=403, detail="管理口令错误")
+
+
 @router.get("", response_model=List[schemas.GameOut])
 def list_games(
     status: Optional[str] = Query(None, description="按状态筛选：open / full / ended"),
-    upcoming: Optional[bool] = Query(None, description="仅看未开始且未结束的"),
+    upcoming: Optional[bool] = Query(None, description="仅看尚未开始且未结束的"),
     db: Session = Depends(get_db),
 ):
     refresh_expired(db)
@@ -23,9 +31,10 @@ def list_games(
     if status:
         q = q.filter(models.Game.status == status)
     if upcoming:
+        now = datetime.now()
         q = q.filter(
             models.Game.status != models.GameStatus.ended.value,
-            models.Game.end_time >= models.Game.start_time,
+            models.Game.start_time > now,
         )
     return [to_out(g) for g in q.all()]
 
@@ -65,6 +74,7 @@ def my_games(
     nickname: str = Query(..., description="参与者昵称"),
     db: Session = Depends(get_db),
 ):
+    nickname = nickname.strip()
     refresh_expired(db)
     q = (
         db.query(models.Game)
@@ -80,6 +90,7 @@ def my_created_games(
     nickname: str = Query(..., description="发起人昵称"),
     db: Session = Depends(get_db),
 ):
+    nickname = nickname.strip()
     refresh_expired(db)
     q = (
         db.query(models.Game)
@@ -109,9 +120,7 @@ def update_game(
     g = db.get(models.Game, game_id)
     if not g:
         raise HTTPException(status_code=404, detail="招募不存在")
-    if x_admin_token != ADMIN_TOKEN:
-        if not payload.admin_token or hash_token(payload.admin_token) != g.admin_token_hash:
-            raise HTTPException(status_code=403, detail="管理口令错误")
+    _require_admin(g, payload.admin_token, x_admin_token)
 
     data = payload.model_dump(exclude_unset=True, exclude={"admin_token"})
     # 校验时间（若本次同时提供了起止时间）
@@ -137,9 +146,25 @@ def delete_game(
     g = db.get(models.Game, game_id)
     if not g:
         raise HTTPException(status_code=404, detail="招募不存在")
-    if x_admin_token != ADMIN_TOKEN:
-        if not admin_token or hash_token(admin_token) != g.admin_token_hash:
-            raise HTTPException(status_code=403, detail="管理口令错误")
+    _require_admin(g, admin_token, x_admin_token)
     db.delete(g)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/{game_id}/end", response_model=schemas.GameOut)
+def end_game(
+    game_id: int,
+    admin_token: Optional[str] = Query(None, description="管理口令"),
+    x_admin_token: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """发起人手动把招募标记为已结束（不删除记录与报名名单）。"""
+    g = db.get(models.Game, game_id)
+    if not g:
+        raise HTTPException(status_code=404, detail="招募不存在")
+    _require_admin(g, admin_token, x_admin_token)
+    g.status = models.GameStatus.ended.value
+    db.commit()
+    db.refresh(g)
+    return to_out(g)
