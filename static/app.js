@@ -1,13 +1,15 @@
 // 游戏邀约平台 · 前端交互逻辑
 let games = [];           // 当前招募列表缓存
-let currentStatus = 'all'; // 当前筛选状态
+let currentStatus = 'active'; // 当前筛选：默认进行中（过期局归档到「已结束」）
 let currentGame = null;    // 详情中正在查看的招募
 let joinMode = 'join';     // 'join' | 'leave'
 let editingId = null;      // 编辑中的招募 id
+let lastCreatedId = null;  // 刚创建的招募，用于复制分享链接
 let adminToken = localStorage.getItem('admin_token') || null; // 管理员令牌
 let isAdmin = !!adminToken;
 
 const STATUS_TEXT = { open: '招募中', full: '已满员', ended: '已结束' };
+const NICK_KEY = 'saved_nickname';
 
 const $ = (id) => document.getElementById(id);
 
@@ -27,6 +29,44 @@ function escapeHtml(s) {
 }
 
 function pad(n) { return String(n).padStart(2, '0'); }
+
+function getNick() { return localStorage.getItem(NICK_KEY) || ''; }
+function saveNick(n) { if (n) localStorage.setItem(NICK_KEY, n); }
+function fillNick(input) { if (input && !input.value) input.value = getNick(); }
+
+function gameShareUrl(id) {
+  return `${location.origin}${location.pathname.replace(/\/$/, '') || '/'}#game-${id}`;
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function parseGameHash() {
+  const m = location.hash.match(/^#game-(\d+)$/);
+  return m ? Number(m[1]) : null;
+}
+
+function setGameHash(id) {
+  const next = `#game-${id}`;
+  if (location.hash !== next) history.replaceState(null, '', next);
+}
+
+function clearGameHash() {
+  if (location.hash.startsWith('#game-')) {
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+}
+
+function closeDetail() {
+  closeModal('detail-modal');
+  clearGameHash();
+}
 
 // ISO 字符串 → "MM-DD HH:mm"
 function formatTime(iso) {
@@ -67,12 +107,24 @@ async function loadGames() {
   } catch (e) { toast(e.message); }
 }
 
+function matchesFilter(g) {
+  const now = Date.now();
+  switch (currentStatus) {
+    case 'all':
+      return true;
+    case 'active':
+      return g.status === 'open' || g.status === 'full';
+    case 'upcoming':
+      return g.status !== 'ended' && new Date(g.start_time).getTime() > now;
+    default:
+      return g.status === currentStatus;
+  }
+}
+
 function render() {
   const list = $('game-list');
   const empty = $('empty');
-  const filtered = currentStatus === 'all'
-    ? games
-    : games.filter((g) => g.status === currentStatus);
+  const filtered = games.filter(matchesFilter);
   list.innerHTML = '';
   empty.hidden = filtered.length > 0;
   filtered.forEach((g) => list.appendChild(card(g)));
@@ -106,7 +158,9 @@ function closeModal(id) { $(id).hidden = true; }
 document.querySelectorAll('[data-close]').forEach((b) => {
   b.addEventListener('click', () => {
     const modal = b.closest('.modal');
-    if (modal) modal.hidden = true;
+    if (!modal) return;
+    if (modal.id === 'detail-modal') closeDetail();
+    else modal.hidden = true;
   });
 });
 
@@ -129,6 +183,8 @@ function openCreate(game) {
     f.creator_nickname.value = game.creator_nickname;
     f.description.value = game.description || '';
     f.admin_token.value = '';
+  } else {
+    fillNick(f.creator_nickname);
   }
   openModal('create-modal');
 }
@@ -146,6 +202,7 @@ $('create-form').addEventListener('submit', async (e) => {
     creator_nickname: f.creator_nickname.value.trim(),
     description: f.description.value.trim() || null,
   };
+  saveNick(body.creator_nickname);
   try {
     if (editingId) {
       if (!isAdmin) body.admin_token = f.admin_token.value.trim();
@@ -153,25 +210,28 @@ $('create-form').addEventListener('submit', async (e) => {
       toast('已保存修改');
     } else {
       const created = await api('/api/games', { method: 'POST', body: JSON.stringify(body) });
-      showToken(created.admin_token);
+      showToken(created.admin_token, created.id);
     }
     closeModal('create-modal');
     await loadGames();
   } catch (err) { toast(err.message); }
 });
 
-function showToken(token) {
+function showToken(token, gameId) {
+  lastCreatedId = gameId;
   $('token-text').textContent = token;
   openModal('token-modal');
 }
 
 $('token-copy').addEventListener('click', async () => {
-  try {
-    await navigator.clipboard.writeText($('token-text').textContent);
-    toast('已复制到剪贴板');
-  } catch (e) {
-    toast('复制失败，请手动长按选择复制');
-  }
+  if (await copyText($('token-text').textContent)) toast('已复制到剪贴板');
+  else toast('复制失败，请手动长按选择复制');
+});
+
+$('token-share').addEventListener('click', async () => {
+  if (!lastCreatedId) return;
+  if (await copyText(gameShareUrl(lastCreatedId))) toast('招募链接已复制，发给群友即可');
+  else toast('复制失败，请手动复制地址栏链接');
 });
 
 // ===== 详情 =====
@@ -186,6 +246,9 @@ function openDetail(g) {
   renderSignups(g);
   $('admin-token').value = '';
   $('admin-token').hidden = isAdmin;  // 管理员免口令，隐藏口令输入框
+  $('detail-join').hidden = g.status !== 'open';
+  $('detail-end').hidden = g.status === 'ended';
+  setGameHash(g.id);
   openModal('detail-modal');
 }
 
@@ -226,6 +289,7 @@ function openJoin(g, mode) {
   const f = $('join-form');
   f.reset();
   f.remark.hidden = mode === 'leave';
+  fillNick(f.nickname);
   openModal('join-modal');
 }
 
@@ -234,6 +298,7 @@ $('join-form').addEventListener('submit', async (e) => {
   const f = e.target;
   const nickname = f.nickname.value.trim();
   if (!nickname) return;
+  saveNick(nickname);
   try {
     if (joinMode === 'join') {
       const conflicts = await checkConflict(nickname, currentGame);
@@ -277,15 +342,36 @@ $('detail-delete').addEventListener('click', async () => {
     if (!isAdmin) url += `?admin_token=${encodeURIComponent(token)}`;
     await api(url, { method: 'DELETE' });
     toast('已删除');
-    closeModal('detail-modal');
+    closeDetail();
     await loadGames();
   } catch (err) { toast(err.message); }
+});
+
+$('detail-end').addEventListener('click', async () => {
+  const token = $('admin-token').value.trim();
+  if (!isAdmin && !token) { toast('请输入管理口令'); return; }
+  if (!confirm('结束后不能再报名，确定结束该招募？')) return;
+  try {
+    let url = `/api/games/${currentGame.id}/end`;
+    if (!isAdmin) url += `?admin_token=${encodeURIComponent(token)}`;
+    const fresh = await api(url, { method: 'POST' });
+    toast('已结束招募');
+    await loadGames();
+    openDetail(fresh);
+  } catch (err) { toast(err.message); }
+});
+
+$('detail-share').addEventListener('click', async () => {
+  if (!currentGame) return;
+  if (await copyText(gameShareUrl(currentGame.id))) toast('招募链接已复制');
+  else toast('复制失败，请手动复制地址栏');
 });
 
 // ===== 我的报名 =====
 $('btn-my').addEventListener('click', () => {
   $('my-form').reset();
   $('my-result').hidden = true;
+  fillNick($('my-form').nickname);
   openModal('my-modal');
 });
 
@@ -293,6 +379,7 @@ $('my-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const nickname = e.target.nickname.value.trim();
   if (!nickname) return;
+  saveNick(nickname);
   try {
     const mine = await api(`/api/games/me?nickname=${encodeURIComponent(nickname)}`);
     renderMyGames(mine);
@@ -344,6 +431,7 @@ async function checkConflict(nickname, game) {
 $('btn-created').addEventListener('click', () => {
   $('created-form').reset();
   $('created-result').hidden = true;
+  fillNick($('created-form').nickname);
   openModal('created-modal');
 });
 
@@ -351,6 +439,7 @@ $('created-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const nickname = e.target.nickname.value.trim();
   if (!nickname) return;
+  saveNick(nickname);
   try {
     const mine = await api(`/api/games/mine?nickname=${encodeURIComponent(nickname)}`);
     renderCreatedGames(mine);
@@ -429,6 +518,24 @@ $('admin-form').addEventListener('submit', async (e) => {
   } catch (err) { toast(err.message); }
 });
 
+async function openFromHash() {
+  const id = parseGameHash();
+  if (!id) return;
+  try {
+    const g = await api(`/api/games/${id}`);
+    openDetail(g);
+  } catch (err) {
+    toast(err.message);
+    clearGameHash();
+  }
+}
+
+window.addEventListener('hashchange', () => {
+  if (parseGameHash()) openFromHash();
+  else closeModal('detail-modal');
+});
+
 // ===== 启动 =====
 loadGames();
 updateAdminUI();
+openFromHash();

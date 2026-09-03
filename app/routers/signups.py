@@ -1,5 +1,6 @@
 """报名相关的接口：报名 / 取消报名。"""
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -21,23 +22,20 @@ def join_game(game_id: int, payload: schemas.SignupCreate, db: Session = Depends
     if g.status == models.GameStatus.full.value:
         raise HTTPException(status_code=409, detail="该招募已满员")
 
-    existing = (
-        db.query(models.Signup)
-        .filter_by(game_id=game_id, nickname=payload.nickname)
-        .first()
-    )
-    if existing:
-        raise HTTPException(status_code=409, detail="你已报名该招募")
-
-    count = db.query(models.Signup).filter_by(game_id=game_id).count()
-    if count >= g.max_players:
-        g.status = models.GameStatus.full.value
-        db.commit()
-        raise HTTPException(status_code=409, detail="该招募已满员")
-
     s = models.Signup(game_id=game_id, nickname=payload.nickname, remark=payload.remark)
     db.add(s)
-    if count + 1 >= g.max_players:
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="你已报名该招募")
+
+    # 插入后再计数，避免并发抢最后一个名额时超员
+    count = db.query(models.Signup).filter_by(game_id=game_id).count()
+    if count > g.max_players:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="该招募已满员")
+    if count >= g.max_players:
         g.status = models.GameStatus.full.value
     db.commit()
     db.refresh(g)
@@ -50,6 +48,7 @@ def leave_game(
     nickname: str = Query(..., description="参与者昵称"),
     db: Session = Depends(get_db),
 ):
+    nickname = nickname.strip()
     g = db.get(models.Game, game_id)
     if not g:
         raise HTTPException(status_code=404, detail="招募不存在")

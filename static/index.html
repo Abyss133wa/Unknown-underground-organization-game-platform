@@ -19,10 +19,12 @@
   </header>
 
   <nav class="filters" id="filters">
-    <button class="filter active" data-status="all">全部</button>
+    <button class="filter active" data-status="active">进行中</button>
+    <button class="filter" data-status="upcoming">即将开始</button>
     <button class="filter" data-status="open">招募中</button>
     <button class="filter" data-status="full">已满员</button>
     <button class="filter" data-status="ended">已结束</button>
+    <button class="filter" data-status="all">全部</button>
   </nav>
 
   <main id="game-list" class="game-list"></main>
@@ -100,21 +102,24 @@
         <h2 id="detail-title"></h2>
         <span id="detail-status" class="badge"></span>
       </div>
-      <div id="detail-body" class="detail-body"></div>
-
-      <div class="detail-section">
-        <h3>已报名（<span id="detail-count">0</span>/<span id="detail-max">0</span>）</h3>
-        <ul id="detail-signups" class="signup-list"></ul>
+      <div class="detail-layout">
+        <div id="detail-body" class="detail-body"></div>
+        <div class="detail-section">
+          <h3>已报名（<span id="detail-count">0</span>/<span id="detail-max">0</span>）</h3>
+          <ul id="detail-signups" class="signup-list"></ul>
+        </div>
       </div>
 
       <div class="detail-actions">
         <button class="btn btn-primary" id="detail-join">报名</button>
         <button class="btn" id="detail-leave">取消报名</button>
+        <button class="btn" id="detail-share">复制链接</button>
       </div>
 
       <div class="admin-zone">
-        <input id="admin-token" placeholder="管理口令（发起人，编辑/删除用）" maxlength="100">
+        <input id="admin-token" placeholder="管理口令（发起人，编辑/结束/删除用）" maxlength="100">
         <button class="btn" id="detail-edit">编辑</button>
+        <button class="btn" id="detail-end">结束招募</button>
         <button class="btn btn-danger" id="detail-delete">删除</button>
       </div>
 
@@ -126,9 +131,10 @@
   <div class="modal" id="token-modal" hidden>
     <div class="modal-card">
       <h2>招募已创建 🎉</h2>
-      <p>请妥善保存管理口令（仅显示这一次，用于编辑 / 删除该招募）：</p>
+      <p>请妥善保存管理口令（仅显示这一次，用于编辑 / 结束 / 删除该招募）：</p>
       <div class="token-box" id="token-text"></div>
       <button class="btn btn-primary btn-block" id="token-copy">复制口令</button>
+      <button class="btn btn-block" id="token-share">复制招募链接</button>
       <button class="btn btn-block" data-close>我已保存</button>
     </div>
   </div>

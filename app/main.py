@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from . import models  # noqa: F401  # 确保模型注册到 metadata
 from .database import engine, Base
@@ -11,6 +12,8 @@ from .routers import admin, games, signups
 
 # 启动时自动建表（SQLite）
 Base.metadata.create_all(bind=engine)
+with engine.begin() as conn:
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_games_start_time ON games (start_time)"))
 
 app = FastAPI(title="游戏邀约平台", version="1.0.0")
 
