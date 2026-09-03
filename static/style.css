@@ -70,7 +70,7 @@ body {
   white-space: nowrap;
   font-size: 14px;
 }
-.filter.active {
+.filter.is-on {
   background: var(--primary);
   color: #fff;
   border-color: var(--primary);
@@ -314,7 +314,7 @@ form input:focus, form textarea:focus { outline: 2px solid var(--primary); borde
   padding: 10px 18px;
   border-radius: 10px;
   font-size: 14px;
-  z-index: 100;
+  z-index: 10000;
   box-shadow: 0 8px 24px rgba(0,0,0,0.2);
   max-width: 90%;
 }
